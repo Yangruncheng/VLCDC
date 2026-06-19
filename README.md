@@ -1,3 +1,6 @@
+
+<img width="1061" height="702" alt="image" src="https://github.com/user-attachments/assets/65356b58-02ed-4b3c-9771-a15106f933d9" />
+
 # VLCDC: Vision-Language Complementary Dual-Centroid Learning for Unsupervised Person Re-Identification
 
 This repository provides the cleaned core implementation of **VLCDC**, a vision-language complementary dual-centroid learning framework for **unsupervised person re-identification**.
