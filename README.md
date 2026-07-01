@@ -1,4 +1,8 @@
-# VLCDC: Vision-Language Complementary Dual-Centroid Learning for Unsupervised Person Re-Identification
+<img width="1371" height="489" alt="image" src="https://github.com/user-attachments/assets/4f022fd9-3bf9-4c85-8790-b088895fd553" />
+
+
+
+# VLCDC: Vision-Language Complementary Dual-Centroid Learning for Unsupervised Person Re-Identification (PR2026) 
 
 This repository provides the cleaned core implementation of **VLCDC**, a vision-language complementary dual-centroid learning framework for **unsupervised person re-identification**.
 
@@ -18,7 +22,7 @@ The framework mainly contains three components:
 * **Key Part-aware Attention (KPA)**: adaptively selects discriminative local patches from pedestrian images.
 * **Complementary Textual Prompting (CTP)**: combines global and local visual cues to construct informative textual prompts and textual centroids.
 * **Appearance Ambiguity Enhancement (AAE)**: applies saliency-guided structured occlusion to encourage the model to learn more robust identity-discriminative features.
-
+<img width="1061" height="702" alt="image" src="https://github.com/user-attachments/assets/65356b58-02ed-4b3c-9771-a15106f933d9" />
 The main training entry point is:
 
 ```bash
@@ -133,6 +137,14 @@ python cluster-contrast-reid/examples/cluster_contrast_train_usl.py \
   --self-norm \
   --use-hard
 ```
+
+
+
+
+
+
+
+
 
 ## Configuration
 
