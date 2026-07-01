@@ -138,14 +138,6 @@ python cluster-contrast-reid/examples/cluster_contrast_train_usl.py \
   --use-hard
 ```
 
-### Experiment
-<img width="534" height="200" alt="image" src="https://github.com/user-attachments/assets/fa8d634c-b6ea-41a5-a0a9-0ba60ad0e631" />
-
-
-<img width="934" height="349" alt="image" src="https://github.com/user-attachments/assets/c1efb4f3-34a6-4e0a-86d9-f9671e3bcce6" />
-
-
-
 
 
 
