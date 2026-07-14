@@ -39,27 +39,71 @@ best_mAP = 0
 
 
 class AdaptiveStripMask:
-    """Adaptive strip erasing used by the SG training pipeline."""
+    """Adaptive strip erasing aligned with the original AAE implementation."""
+
+    DATASET_PROFILES = {
+        # Original Market1501 branch
+        "market": {
+            "v_num_bands": (2, 4),
+            "v_width_range": (15, 40),
+            "h_num_bands": (1, 2),
+            "h_width_range": (40, 60),
+        },
+        "market1501": {
+            "v_num_bands": (2, 4),
+            "v_width_range": (15, 40),
+            "h_num_bands": (1, 2),
+            "h_width_range": (40, 60),
+        },
+        # Original MSMT branch from the commented code
+        "msmt": {
+            "v_num_bands": (1, 2),
+            "v_width_range": (10, 20),
+            "h_num_bands": (1, 2),
+            "h_width_range": (10, 20),
+        },
+        "msmt17": {
+            "v_num_bands": (1, 2),
+            "v_width_range": (10, 20),
+            "h_num_bands": (1, 2),
+            "h_width_range": (10, 20),
+        },
+    }
 
     def __init__(
         self,
         probability=0.7,
+        dataset_name="market1501",
+        adaptive_mode=True,
         semantic_aware=True,
         gradient_masking=True,
+        num_bands=(2, 4),
+        width_range=(15, 35),
         v_num_bands=(2, 4),
         v_width_range=(15, 40),
         h_num_bands=(1, 2),
         h_width_range=(40, 60),
         ratio=0.7,
+        mode="both",
     ):
         self.probability = probability
+        self.dataset_name = (dataset_name or "").lower()
+        self.adaptive_mode = adaptive_mode
         self.semantic_aware = semantic_aware
         self.gradient_masking = gradient_masking
-        self.v_num_bands = v_num_bands
-        self.v_width_range = v_width_range
-        self.h_num_bands = h_num_bands
-        self.h_width_range = h_width_range
         self.ratio = ratio
+        self.mode = mode
+
+        self.base_params = {
+            "num_bands": num_bands,
+            "width_range": width_range,
+            "ratio": ratio,
+            "mode": mode,
+            "v_num_bands": v_num_bands,
+            "v_width_range": v_width_range,
+            "h_num_bands": h_num_bands,
+            "h_width_range": h_width_range,
+        }
 
     def __call__(self, img):
         if random.random() > self.probability:
@@ -67,12 +111,19 @@ class AdaptiveStripMask:
 
         image = np.array(img)
         h, w = image.shape[:2]
+
         saliency = self._saliency(image) if self.semantic_aware else None
-        strips = self._make_strips(saliency, h, w)
+        params = self._adaptive_params()
+        direction = random.choice(["v", "h"]) if params["mode"] == "both" else params["mode"]
+
+        if self.semantic_aware and saliency is not None:
+            strips = self._make_semantic_strips(saliency, params, h, w)
+        else:
+            strips = self._make_random_strips(params, h, w, direction)
 
         mask = np.ones((h, w), dtype=np.float32)
-        for direction, start, end in strips:
-            if direction == "v":
+        for strip_direction, start, end in strips:
+            if strip_direction == "v":
                 mask[:, start:end] = 0
             else:
                 mask[start:end, :] = 0
@@ -85,9 +136,21 @@ class AdaptiveStripMask:
             if random.random() > 0.5
             else np.mean(image, axis=(0, 1)).astype(int)
         )
-        mask = np.repeat(mask[:, :, None], 3, axis=2)
-        erased = image.astype(np.float32) * mask + fill_color * (1 - mask)
+
+        mask_3d = np.stack([mask] * 3, axis=2)
+        erased = image.astype(np.float32) * mask_3d + fill_color * (1 - mask_3d)
         return Image.fromarray(np.clip(erased, 0, 255).astype(np.uint8))
+
+    def _adaptive_params(self):
+        params = self.base_params.copy()
+        if not self.adaptive_mode:
+            return params
+
+        for key, profile in self.DATASET_PROFILES.items():
+            if key in self.dataset_name:
+                params.update(profile)
+                break
+        return params
 
     @staticmethod
     def _saliency(image):
@@ -101,6 +164,7 @@ class AdaptiveStripMask:
         except ImportError:
             grad_y, grad_x = np.gradient(gray)
             laplacian = np.abs(np.gradient(grad_x)[1] + np.gradient(grad_y)[0])
+
         gradient = np.sqrt(grad_x**2 + grad_y**2)
         spectrum = np.log(np.abs(np.fft.fftshift(np.fft.fft2(gray))) + 1)
 
@@ -109,37 +173,55 @@ class AdaptiveStripMask:
 
         return normalize(gradient) * 0.4 + normalize(laplacian) * 0.3 + normalize(spectrum) * 0.4
 
-    def _make_strips(self, saliency, h, w):
+    def _make_semantic_strips(self, saliency, params, h, w):
         strips = []
-        v_count = random.randint(*self.v_num_bands)
-        h_count = random.randint(*self.h_num_bands)
 
-        for _ in range(v_count):
-            if random.random() <= self.ratio:
-                width = random.randint(*self.v_width_range)
-                start = self._weighted_start(saliency, axis=0, size=w, width=width)
+        for _ in range(random.randint(*params["v_num_bands"])):
+            if random.random() > params["ratio"]:
+                continue
+            width = random.randint(*params["v_width_range"])
+            start = self._weighted_start(saliency, axis=0, size=w, width=width)
+            strips.append(("v", start, min(start + width, w)))
+
+        for _ in range(random.randint(*params["h_num_bands"])):
+            if random.random() > params["ratio"]:
+                continue
+            width = random.randint(*params["h_width_range"])
+            start = self._weighted_start(saliency, axis=1, size=h, width=width)
+            strips.append(("h", start, min(start + width, h)))
+
+        return strips
+
+    def _make_random_strips(self, params, h, w, direction):
+        strips = []
+        for _ in range(random.randint(*params["num_bands"])):
+            if random.random() > params["ratio"]:
+                continue
+
+            width = random.randint(*params["width_range"])
+            if direction == "v":
+                start = random.randint(0, max(1, w - width))
                 strips.append(("v", start, min(start + width, w)))
-
-        for _ in range(h_count):
-            if random.random() <= self.ratio:
-                width = random.randint(*self.h_width_range)
-                start = self._weighted_start(saliency, axis=1, size=h, width=width)
+            else:
+                start = random.randint(0, max(1, h - width))
                 strips.append(("h", start, min(start + width, h)))
 
         return strips
 
     @staticmethod
     def _weighted_start(saliency, axis, size, width):
-        max_start = max(1, size - width)
         if saliency is None or random.random() >= 0.7:
-            return random.randint(0, max_start)
+            return random.randint(0, max(1, size - width))
 
         weights = np.mean(saliency, axis=axis)
-        weights = weights[:max_start]
         weights_sum = weights.sum()
         if weights_sum <= 0:
-            return random.randint(0, max_start)
-        return int(np.random.choice(max_start, p=weights / weights_sum))
+            return random.randint(0, max(1, size - width))
+
+        try:
+            return int(np.random.choice(size, p=weights / weights_sum))
+        except Exception:
+            return random.randint(0, max(1, size - width))
 
     @staticmethod
     def _soften_edges(mask, strips):
